@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harbor
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://helm.goharbor.io
+    targetRevision: 1.14.0
+    chart: harbor
+    helm:
+      releaseName: harbor
+      parameters:
+        - name: expose.type
+          value: clusterIP
+        - name: externalURL
+          value: https://harbor.example.com
+        - name: expose.tls.auto.commonName
+          value: harbor.example.com
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: harbor
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

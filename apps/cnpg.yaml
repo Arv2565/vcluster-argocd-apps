@@ -1,0 +1,72 @@
+# ──────────────────────────────────────────────────────────────────
+# CloudNativePG — Operator + a basic Postgres Cluster
+#
+# Uses a Helm umbrella approach:
+#   1. This Application installs the CNPG operator via its Helm chart.
+#   2. A second Application (cnpg-cluster) creates the actual Cluster CR.
+#      Split so the operator is healthy before the CR is applied.
+# ──────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"   # install operator first
+spec:
+  project: default
+  source:
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    targetRevision: "*"          # latest stable; pin to e.g. "0.22.0" for prod
+    helm:
+      releaseName: cnpg
+      values: |
+        # Operator-level settings
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true   # required for CNPG CRDs
+
+---
+# ──────────────────────────────────────────────────────────────────
+# CNPG Cluster CR — deployed after the operator is healthy
+# Points to a plain manifest in your Git repo at:
+#   infra/cnpg-cluster/cluster.yaml
+# ──────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # after operator
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Arv2565/vcluster-argocd-apps.git
+    targetRevision: main
+    path: infra/cnpg-cluster       # create this folder — see note below
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: postgres
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
